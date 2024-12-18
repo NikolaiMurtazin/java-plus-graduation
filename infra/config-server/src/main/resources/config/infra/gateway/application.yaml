@@ -1,0 +1,13 @@
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: main-service_route
+          uri: lb://main-service
+          predicates:
+            - Path=/main-service/**
+          filters:
+            - PrefixPath=/api/v1
+
+server:
+  port: 8080
