@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.practicum.StatClient;
 import ru.practicum.compilation.dto.CompilationDto;
 import ru.practicum.compilation.dto.NewCompilationDto;
 import ru.practicum.compilation.dto.PublicCompilationParams;
@@ -14,6 +13,7 @@ import ru.practicum.compilation.mapper.CompilationMapper;
 import ru.practicum.compilation.model.Compilation;
 import ru.practicum.compilation.model.QCompilation;
 import ru.practicum.compilation.repository.CompilationRepository;
+import ru.practicum.config.StatServiceAdapter;
 import ru.practicum.event.dto.EventShortDto;
 import ru.practicum.event.mapper.EventMapper;
 import ru.practicum.event.model.Event;
@@ -39,7 +39,7 @@ public class CompilationServiceImpl implements CompilationService {
     private final CompilationRepository compilationRepository;
     private final EventRepository eventRepository;
     private final RequestRepository requestRepository;
-    private final StatClient statClient;
+    private final StatServiceAdapter statServiceAdapter;
     private final EventMapper eventMapper;
     private final RatingRepository ratingRepository;
 
@@ -68,7 +68,7 @@ public class CompilationServiceImpl implements CompilationService {
 
         StatsParams statsParams = StatsParams.builder().uris(uris).unique(true).start(LocalDateTime.now().minusYears(100)).end(LocalDateTime.now()).build();
 
-        List<ViewStatsDTO> viewStatsDTOS = statClient.getStats(statsParams);
+        List<ViewStatsDTO> viewStatsDTOS = statServiceAdapter.getStats(statsParams);
 
         return eventsIdWithViews.stream().map(ev -> {
             Event finalEvent = compEvents.stream().filter(e -> e.getId().equals(ev.getEventId())).findFirst().orElseThrow(() -> new IllegalStateException("Event not found: " + ev.getEventId()));

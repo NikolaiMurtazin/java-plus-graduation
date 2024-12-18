@@ -8,7 +8,7 @@ import ru.practicum.config.FeignConfig;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients(defaultConfiguration = FeignConfig.class)
+@EnableFeignClients(defaultConfiguration = FeignConfig.class, basePackages = "ru.practicum")
 public class MainServer {
     public static void main(String[] args) {
         SpringApplication.run(MainServer.class, args);

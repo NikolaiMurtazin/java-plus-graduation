@@ -4,7 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
-import ru.practicum.StatClient;
+import ru.practicum.config.StatServiceAdapter;
 import ru.practicum.event.dto.EventFullDto;
 import ru.practicum.event.dto.EventShortDto;
 import ru.practicum.event.dto.PublicEventRequestParams;
@@ -22,7 +22,7 @@ import java.util.Map;
 public class PublicEventsController {
     private final EventService eventService;
 
-    private final StatClient statClient;
+    private final StatServiceAdapter statServiceAdapter;
 
     @GetMapping()
     public List<EventShortDto> getEventsPublic(@RequestParam(value = "text", required = false) String text,
@@ -74,6 +74,6 @@ public class PublicEventsController {
     }
 
     private void sendStats(HttpServletRequest request) {
-        statClient.saveStats(request);
+        statServiceAdapter.saveStats(request);
     }
 }

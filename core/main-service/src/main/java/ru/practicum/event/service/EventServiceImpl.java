@@ -5,11 +5,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.practicum.StatClient;
 import ru.practicum.StatsParams;
 import ru.practicum.ViewStatsDTO;
 import ru.practicum.category.model.Category;
 import ru.practicum.category.repository.CategoryRepository;
+import ru.practicum.config.StatServiceAdapter;
 import ru.practicum.event.dto.AdminEventRequestParams;
 import ru.practicum.event.dto.EventAction;
 import ru.practicum.event.dto.EventFullDto;
@@ -51,7 +51,7 @@ public class EventServiceImpl implements EventService {
     private final EventRepository eventRepository;
     private final EventMapper eventMapper;
     private final RequestRepository requestRepository;
-    private final StatClient statClient;
+    private final StatServiceAdapter statServiceAdapter;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
@@ -417,7 +417,7 @@ public class EventServiceImpl implements EventService {
                 .start(LocalDateTime.now().minusYears(200))
                 .end(LocalDateTime.now())
                 .build();
-        List<ViewStatsDTO> stats = statClient.getStats(statsParams);
+        List<ViewStatsDTO> stats = statServiceAdapter.getStats(statsParams);
         if (stats.isEmpty()) {
             return 0;
         }
@@ -436,6 +436,6 @@ public class EventServiceImpl implements EventService {
                 .end(LocalDateTime.now())
                 .build();
 
-        return statClient.getStats(statsParams);
+        return statServiceAdapter.getStats(statsParams);
     }
 }
