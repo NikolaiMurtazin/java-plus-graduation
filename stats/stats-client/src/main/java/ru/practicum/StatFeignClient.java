@@ -19,6 +19,6 @@ public interface StatFeignClient {
     List<ViewStatsDTO> getStats(@RequestParam("start") String start,
                                 @RequestParam("end") String end,
                                 @RequestParam(value = "uris", required = false, defaultValue = "") List<String> uris,
-                                @RequestParam(value = "unique", defaultValue = "false") Boolean unique);;
+                                @RequestParam(value = "unique", defaultValue = "false") Boolean unique);
 }
 
