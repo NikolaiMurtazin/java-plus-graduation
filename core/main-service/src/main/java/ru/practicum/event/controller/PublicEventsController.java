@@ -51,16 +51,14 @@ public class PublicEventsController {
                 .from(from)
                 .size(size)
                 .build();
-        List<EventShortDto> all = eventService.getAll(params);
         sendStats(request);
-        return all;
+        return eventService.getAll(params);
     }
 
     @GetMapping("/{eventId}")
     public EventFullDto getById(@PathVariable("eventId") long eventId, HttpServletRequest request) {
-        EventFullDto event = eventService.getById(eventId);
         sendStats(request);
-        return event;
+        return eventService.getById(eventId);
     }
 
     private Map<String, LocalDateTime> validDate(LocalDateTime rangeStart, LocalDateTime rangeEnd) {
