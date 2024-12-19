@@ -14,13 +14,13 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 public class PublicEventRequestParams {
-    String text;
-    List<Long> categories;
-    Boolean paid;
-    LocalDateTime rangeStart;
-    LocalDateTime rangeEnd;
-    Boolean onlyAvailable;
-    Sort sort;
-    int from;
-    int size;
+    private String text;
+    private List<Long> categories;
+    private Boolean paid;
+    private LocalDateTime rangeStart;
+    private LocalDateTime rangeEnd;
+    private Boolean onlyAvailable;
+    private Sort sort;
+    private int from;
+    private int size;
 }

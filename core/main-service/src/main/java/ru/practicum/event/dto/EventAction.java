@@ -2,11 +2,11 @@ package ru.practicum.event.dto;
 
 public enum EventAction {
 
-    SEND_TO_REVIEW, // отправляется при юзером
+    SEND_TO_REVIEW,
 
-    CANCEL_REVIEW, // отменяется юзером
+    CANCEL_REVIEW,
 
-    PUBLISH_EVENT, // публикуется админом
+    PUBLISH_EVENT,
 
-    REJECT_EVENT; // отменяется админом
+    REJECT_EVENT
 }

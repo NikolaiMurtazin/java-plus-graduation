@@ -42,8 +42,6 @@ public class CompilationServiceImpl implements CompilationService {
     private final StatServiceAdapter statServiceAdapter;
     private final EventMapper eventMapper;
     private final RatingRepository ratingRepository;
-
-
     private final CompilationMapper compilationMapper;
 
     @Override

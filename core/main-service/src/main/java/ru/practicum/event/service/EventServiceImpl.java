@@ -24,6 +24,7 @@ import ru.practicum.event.mapper.EventMapper;
 import ru.practicum.event.model.Event;
 import ru.practicum.event.model.EventState;
 import ru.practicum.event.model.QEvent;
+import ru.practicum.event.model.Sort;
 import ru.practicum.event.repository.EventRepository;
 import ru.practicum.exeption.ConflictException;
 import ru.practicum.exeption.NotFoundException;
@@ -40,8 +41,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-
-import static ru.practicum.event.model.Sort.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -57,6 +57,9 @@ public class EventServiceImpl implements EventService {
     private final LocationRepository locationRepository;
     private final RatingRepository ratingRepository;
 
+    // Константа для универсального метода получения статистики
+    private static final LocalDateTime DEFAULT_START_DATE = LocalDateTime.MIN;
+
     @Override
     public List<EventShortDto> getAll(PublicEventRequestParams params) {
         QEvent event = QEvent.event;
@@ -66,11 +69,12 @@ public class EventServiceImpl implements EventService {
         int size = params.getSize();
 
         conditions.add(event.state.eq(EventState.PUBLISHED));
-
         conditions.add(event.eventDate.after(params.getRangeStart()));
         conditions.add(event.eventDate.before(params.getRangeEnd()));
+
         if (params.getText() != null) {
-            conditions.add(event.description.containsIgnoreCase(params.getText()).or(event.annotation.containsIgnoreCase(params.getText())));
+            conditions.add(event.description.containsIgnoreCase(params.getText())
+                    .or(event.annotation.containsIgnoreCase(params.getText())));
         }
         if (params.getCategories() != null && !params.getCategories().isEmpty()) {
             conditions.add(event.category.id.in(params.getCategories()));
@@ -78,48 +82,45 @@ public class EventServiceImpl implements EventService {
         if (params.getPaid() != null) {
             conditions.add(event.paid.eq(params.getPaid()));
         }
-        BooleanExpression finalConditional = conditions.stream().reduce(BooleanExpression::and).get();
+
+        BooleanExpression finalConditional = conditions.stream()
+                .reduce(BooleanExpression::and)
+                .orElse(null);
 
         PageRequest pageRequest = PageRequest.of(from > 0 ? from / size : 0, size);
-
         List<Event> events = eventRepository.findAll(finalConditional, pageRequest).getContent();
+
         if (events.isEmpty()) {
             return Collections.emptyList();
         }
-        List<EventCountByRequest> eventsIdWithConfirmedRequest;
-        if (params.getOnlyAvailable()) {
-            eventsIdWithConfirmedRequest = requestRepository.findConfirmedRequestWithLimitCheck(events);
-        } else {
-            eventsIdWithConfirmedRequest = requestRepository.findConfirmedRequestWithoutLimitCheck(events);
-        }
 
-        List<ViewStatsDTO> viewStatsDTOS = getViewStatsDTOS(eventsIdWithConfirmedRequest);
+        List<EventCountByRequest> eventsIdWithConfirmedRequest = params.getOnlyAvailable()
+                ? requestRepository.findConfirmedRequestWithLimitCheck(events)
+                : requestRepository.findConfirmedRequestWithoutLimitCheck(events);
+
+        // Получение списка URI для статистики
+        List<String> uris = eventsIdWithConfirmedRequest.stream()
+                .map(ev -> "/events/" + ev.getEventId())
+                .collect(Collectors.toList());
+
+        List<ViewStatsDTO> viewStatsDTOS = fetchViewStats(uris);
         List<EventRatingDto> eventRatingDtos = getEventRatingDtos(events);
 
-        List<EventShortDto> eventShortDtos = new ArrayList<>(eventsIdWithConfirmedRequest.stream()
+        List<EventShortDto> eventShortDtos = eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
                     long rating = getRating(ev, eventRatingDtos);
-                    long views = getViews(ev, viewStatsDTOS, finalEvent);
+                    long views = getViews(ev.getEventId(), viewStatsDTOS);
+                    finalEvent.setConfirmedRequests(Math.toIntExact(ev.getCount()));
                     return eventMapper.toEventShortDto(finalEvent, rating, views);
                 })
-                .toList());
+                .collect(Collectors.toList());
 
         if (params.getSort() != null) {
-            if (params.getSort() == EVENT_DATE) {
-                eventShortDtos.sort(Comparator.comparing(EventShortDto::getEventDate).reversed());
-            } else if (params.getSort() == VIEWS) {
-                eventShortDtos.sort(Comparator.comparing(EventShortDto::getViews).reversed());
-            } else if (params.getSort() == TOP_RATING) {
-                eventShortDtos.sort(Comparator.comparing(EventShortDto::getRating).reversed());
-            }
+            eventShortDtos.sort(getComparator(params.getSort()));
         }
 
         return eventShortDtos;
-    }
-
-    private List<EventRatingDto> getEventRatingDtos(List<Event> events) {
-        return ratingRepository.countEventsRating(events);
     }
 
     @Override
@@ -130,11 +131,10 @@ public class EventServiceImpl implements EventService {
         }
 
         Integer requests = requestRepository.countConfirmedRequest(eventId);
-
         long rating = getEventRating(event);
-        long eventViews = getEventViews(event);
+        long views = getEventViews(event);
         event.setConfirmedRequests(requests);
-        return eventMapper.toEventFullDto(event, rating, eventViews);
+        return eventMapper.toEventFullDto(event, rating, views);
     }
 
     @Override
@@ -158,32 +158,39 @@ public class EventServiceImpl implements EventService {
         if (params.getCategories() != null && !params.getCategories().isEmpty()) {
             conditions.add(event.category.id.in(params.getCategories()));
         }
-        BooleanExpression finalConditional = conditions.stream().reduce(BooleanExpression::and).get();
-
+        BooleanExpression finalConditional = conditions.stream()
+                .reduce(BooleanExpression::and)
+                .orElse(null);
 
         List<Event> events = eventRepository.findAll(finalConditional, pageRequest).getContent();
+
         if (events.isEmpty()) {
             return Collections.emptyList();
         }
 
-        List<EventCountByRequest> eventsIdWithConfirmedRequest
-                = requestRepository.findConfirmedRequestWithoutLimitCheck(events);
+        List<EventCountByRequest> eventsIdWithConfirmedRequest = requestRepository.findConfirmedRequestWithoutLimitCheck(events);
         List<EventRatingDto> eventRatingDtos = getEventRatingDtos(events);
 
+        // Получение списка URI для статистики
+        List<String> uris = eventsIdWithConfirmedRequest.stream()
+                .map(ev -> "/events/" + ev.getEventId())
+                .collect(Collectors.toList());
 
-        List<ViewStatsDTO> viewStatsDTOS = getViewStatsDTOS(eventsIdWithConfirmedRequest);
+        List<ViewStatsDTO> viewStatsDTOS = fetchViewStats(uris);
 
         return eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
                     long rating = getRating(ev, eventRatingDtos);
-                    long views = getViews(ev, viewStatsDTOS, finalEvent);
+                    long views = getViews(ev.getEventId(), viewStatsDTOS);
+                    finalEvent.setConfirmedRequests(Math.toIntExact(ev.getCount()));
                     return eventMapper.toEventFullDto(finalEvent, rating, views);
                 })
-                .toList();
+                .collect(Collectors.toList());
     }
 
-    //    Приватные пользователи
+    // Приватные методы для работы с пользователями
+
     @Override
     public List<EventShortDto> getAll(PrivateEventParams params) {
         QEvent event = QEvent.event;
@@ -197,21 +204,25 @@ public class EventServiceImpl implements EventService {
 
         List<Event> events = eventRepository.findAll(finalCondition, pageRequest).getContent();
 
-        List<EventCountByRequest> eventsIdWithConfirmedRequest
-                = requestRepository.findConfirmedRequestWithoutLimitCheck(events);
+        List<EventCountByRequest> eventsIdWithConfirmedRequest = requestRepository.findConfirmedRequestWithoutLimitCheck(events);
 
-        List<ViewStatsDTO> viewStatsDTOS = getViewStatsDTOS(eventsIdWithConfirmedRequest);
+        // Получение списка URI для статистики
+        List<String> uris = eventsIdWithConfirmedRequest.stream()
+                .map(ev -> "/events/" + ev.getEventId())
+                .collect(Collectors.toList());
+
+        List<ViewStatsDTO> viewStatsDTOS = fetchViewStats(uris);
         List<EventRatingDto> eventRatingDtos = getEventRatingDtos(events);
 
         return eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
-                    long views = getViews(ev, viewStatsDTOS, finalEvent);
+                    long views = getViews(ev.getEventId(), viewStatsDTOS);
                     long rating = getRating(ev, eventRatingDtos);
-
+                    finalEvent.setConfirmedRequests(Math.toIntExact(ev.getCount()));
                     return eventMapper.toEventShortDto(finalEvent, rating, views);
                 })
-                .toList();
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -219,7 +230,7 @@ public class EventServiceImpl implements EventService {
     public EventFullDto create(long userId, NewEventDto newEventDto) {
         User initiator = getUser(userId);
         if (newEventDto.getEventDate().minusHours(2).isBefore(LocalDateTime.now())) {
-            throw new ConflictException("Different with now less than 2 hours");
+            throw new ConflictException("Event date is less than 2 hours from now");
         }
         Category category = getCategory(newEventDto.getCategory());
         Location location = locationRepository.save(newEventDto.getLocation());
@@ -253,46 +264,14 @@ public class EventServiceImpl implements EventService {
         if (event.getState().equals(EventState.PUBLISHED)) {
             throw new ConflictException("You can't change an event that has already been published");
         }
-        if (event.getEventDate().minusHours(2).isBefore(LocalDateTime.now())) {
-            throw new ConflictException("Different with now less than 2 hours");
+        if (updateEventUserRequest.getEventDate() != null &&
+                updateEventUserRequest.getEventDate().minusHours(2).isBefore(LocalDateTime.now())) {
+            throw new ConflictException("Event date is less than 2 hours from now");
         }
 
-        if (updateEventUserRequest.getAnnotation() != null) {
-            event.setAnnotation(updateEventUserRequest.getAnnotation());
-        }
-        if (updateEventUserRequest.getCategory() != null) {
-            Category category = getCategory(updateEventUserRequest.getCategory());
-            event.setCategory(category);
-        }
-        if (updateEventUserRequest.getDescription() != null) {
-            event.setDescription(updateEventUserRequest.getDescription());
-        }
-        if (updateEventUserRequest.getEventDate() != null) {
-            event.setEventDate(updateEventUserRequest.getEventDate());
-        }
-        if (updateEventUserRequest.getLocation() != null) {
-            Location location = locationRepository.save(updateEventUserRequest.getLocation());
-            event.setLocation(location);
-        }
-        if (updateEventUserRequest.getPaid() != null) {
-            event.setPaid(updateEventUserRequest.getPaid());
-        }
-        if (updateEventUserRequest.getParticipantLimit() != null) {
-            event.setParticipantLimit(updateEventUserRequest.getParticipantLimit());
-        }
-        if (updateEventUserRequest.getRequestModeration() != null) {
-            event.setRequestModeration(updateEventUserRequest.getRequestModeration());
-        }
-        if (updateEventUserRequest.getTitle() != null) {
-            event.setTitle(updateEventUserRequest.getTitle());
-        }
-        if (updateEventUserRequest.getStateAction() != null) {
-            if (updateEventUserRequest.getStateAction().equals(EventAction.SEND_TO_REVIEW)) {
-                event.setState(EventState.PENDING);
-            } else if (updateEventUserRequest.getStateAction().equals(EventAction.CANCEL_REVIEW)) {
-                event.setState(EventState.CANCELED);
-            }
-        }
+        // Обновление полей события
+        updateEventFields(event, updateEventUserRequest);
+
         Event saved = eventRepository.save(event);
         long rating = getEventRating(event);
         long eventViews = getEventViews(saved);
@@ -304,20 +283,13 @@ public class EventServiceImpl implements EventService {
     public EventFullDto update(long eventId, UpdateEventAdminRequest eventDto) {
         Event savedEvent = getEvent(eventId);
         if (eventDto.getStateAction() != null) {
-            if (eventDto.getStateAction().equals(EventAction.PUBLISH_EVENT) && !savedEvent.getState().equals(EventState.PENDING)) {
-                throw new ConflictException("Event in state " + savedEvent.getState() + " can not be published");
-            }
-            if (eventDto.getStateAction().equals(EventAction.REJECT_EVENT) && savedEvent.getState().equals(EventState.PUBLISHED)) {
-                throw new ConflictException("Event in state " + savedEvent.getState() + " can not be rejected");
-            }
-            if (eventDto.getStateAction().equals(EventAction.REJECT_EVENT)) {
-                savedEvent.setState(EventState.CANCELED);
-            }
+            handleStateAction(savedEvent, eventDto.getStateAction());
         }
 
         if (eventDto.getEventDate() != null) {
-            if (savedEvent.getState().equals(EventState.PUBLISHED) && savedEvent.getPublishedOn().plusHours(1).isAfter(eventDto.getEventDate())) {
-                throw new ConflictException("Different with publishedOn less than 1 hours");
+            if (savedEvent.getState().equals(EventState.PUBLISHED) &&
+                    savedEvent.getPublishedOn().plusHours(1).isAfter(eventDto.getEventDate())) {
+                throw new ConflictException("Event date is less than 1 hour after publication");
             }
             savedEvent.setEventDate(eventDto.getEventDate());
         }
@@ -348,15 +320,15 @@ public class EventServiceImpl implements EventService {
         }
         if (eventDto.getStateAction() != null && eventDto.getStateAction().equals(EventAction.PUBLISH_EVENT)) {
             savedEvent.setState(EventState.PUBLISHED);
+            savedEvent.setPublishedOn(LocalDateTime.now());
         }
-        savedEvent.setPublishedOn(LocalDateTime.now());
         Integer requests = requestRepository.countConfirmedRequest(eventId);
         savedEvent.setConfirmedRequests(requests);
 
         Event updated = eventRepository.save(savedEvent);
 
-        long rating = getEventRating(savedEvent);
-        long eventViews = getEventViews(savedEvent);
+        long rating = getEventRating(updated);
+        long eventViews = getEventViews(updated);
         return eventMapper.toEventFullDto(updated, rating, eventViews);
     }
 
@@ -365,21 +337,27 @@ public class EventServiceImpl implements EventService {
         return eventRepository.findAllById(events);
     }
 
-    private Event getEvent(long eventId) {
-        return eventRepository.findById(eventId)
-                .orElseThrow(() -> new NotFoundException("Event not found with id: " + eventId));
+    // Универсальный метод для получения статистики просмотров
+    private List<ViewStatsDTO> fetchViewStats(List<String> uris) {
+        if (uris.isEmpty()) {
+            return Collections.emptyList();
+        }
+        StatsParams statsParams = StatsParams.builder()
+                .uris(uris)
+                .unique(true)
+                .start(DEFAULT_START_DATE) // Используем минимальную дату для охвата всех возможных записей
+                .end(LocalDateTime.now())
+                .build();
+
+        return statServiceAdapter.getStats(statsParams);
     }
 
-    private User getUser(long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User not found with id" + userId));
+    // Получение рейтингов для списка событий
+    private List<EventRatingDto> getEventRatingDtos(List<Event> events) {
+        return ratingRepository.countEventsRating(events);
     }
 
-    private Category getCategory(long categoryId) {
-        return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new NotFoundException("Category with id= " + categoryId + " was not found"));
-    }
-
+    // Получение рейтинга для конкретного события
     private long getRating(EventCountByRequest event, List<EventRatingDto> eventRatingDtos) {
         return eventRatingDtos.stream()
                 .filter(ev -> ev.getEventId().equals(event.getEventId()))
@@ -388,54 +366,133 @@ public class EventServiceImpl implements EventService {
                 .orElse(0L);
     }
 
-    private static long getViews(EventCountByRequest ev, List<ViewStatsDTO> viewStatsDTOS, Event finalEvent) {
-        long views = viewStatsDTOS.stream()
-                .filter(stat -> stat.getUri().equals("/events/" + ev.getEventId()))
+    // Получение рейтинга (разница лайков и дизлайков)
+    private long getEventRating(Event event) {
+        return ratingRepository.countLikesByEvent(event) - ratingRepository.countDislikesByEvent(event);
+    }
+
+    // Получение просмотров для конкретного события
+    private long getEventViews(Event event) {
+        List<String> uris = List.of("/events/" + event.getId());
+        List<ViewStatsDTO> stats = fetchViewStats(uris);
+        return stats.stream()
+                .findFirst()
+                .map(ViewStatsDTO::getHits)
+                .orElse(0L);
+    }
+
+    // Получение просмотров по ID события из списка статистики
+    private long getViews(long eventId, List<ViewStatsDTO> viewStatsDTOS) {
+        return viewStatsDTOS.stream()
+                .filter(stat -> stat.getUri().equals("/events/" + eventId))
                 .map(ViewStatsDTO::getHits)
                 .findFirst()
                 .orElse(0L);
-        finalEvent.setConfirmedRequests(Math.toIntExact(ev.getCount()));
-        return views;
     }
 
-    private static Event getFinalEvent(EventCountByRequest ev, List<Event> events) {
+    // Получение окончательного объекта события по ID
+    private Event getFinalEvent(EventCountByRequest ev, List<Event> events) {
         return events.stream()
                 .filter(e -> e.getId().equals(ev.getEventId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Event not found: " + ev.getEventId()));
     }
 
-    private long getEventRating(Event event) {
-        return ratingRepository.countLikesByEvent(event) - ratingRepository.countDislikesByEvent(event);
-    }
-
-    private long getEventViews(Event event) {
-        List<String> listEndpoint = List.of("/events/" + event.getId());
-        StatsParams statsParams = StatsParams.builder()
-                .uris(listEndpoint)
-                .unique(true)
-                .start(LocalDateTime.now().minusYears(200))
-                .end(LocalDateTime.now())
-                .build();
-        List<ViewStatsDTO> stats = statServiceAdapter.getStats(statsParams);
-        if (stats.isEmpty()) {
-            return 0;
-        }
-        return stats.getFirst().getHits();
-    }
-
+    // Метод для получения списка URI и вызова универсального метода статистики
     private List<ViewStatsDTO> getViewStatsDTOS(List<EventCountByRequest> eventsIdWithConfirmedRequest) {
         List<String> uris = eventsIdWithConfirmedRequest.stream()
                 .map(ev -> "/events/" + ev.getEventId())
-                .toList();
+                .collect(Collectors.toList());
 
-        StatsParams statsParams = StatsParams.builder()
-                .uris(uris)
-                .unique(true)
-                .start(LocalDateTime.now().minusYears(100))
-                .end(LocalDateTime.now())
-                .build();
+        return fetchViewStats(uris);
+    }
 
-        return statServiceAdapter.getStats(statsParams);
+    // Метод для получения пользователя по ID
+    private User getUser(long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found with id " + userId));
+    }
+
+    // Метод для получения категории по ID
+    private Category getCategory(long categoryId) {
+        return categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new NotFoundException("Category with id " + categoryId + " was not found"));
+    }
+
+    // Метод для получения события по ID
+    private Event getEvent(long eventId) {
+        return eventRepository.findById(eventId)
+                .orElseThrow(() -> new NotFoundException("Event not found with id: " + eventId));
+    }
+
+    // Метод для обновления полей события
+    private void updateEventFields(Event event, UpdateEventUserRequest updateEventUserRequest) {
+        if (updateEventUserRequest.getAnnotation() != null) {
+            event.setAnnotation(updateEventUserRequest.getAnnotation());
+        }
+        if (updateEventUserRequest.getCategory() != null) {
+            Category category = getCategory(updateEventUserRequest.getCategory());
+            event.setCategory(category);
+        }
+        if (updateEventUserRequest.getDescription() != null) {
+            event.setDescription(updateEventUserRequest.getDescription());
+        }
+        if (updateEventUserRequest.getEventDate() != null) {
+            event.setEventDate(updateEventUserRequest.getEventDate());
+        }
+        if (updateEventUserRequest.getLocation() != null) {
+            Location location = locationRepository.save(updateEventUserRequest.getLocation());
+            event.setLocation(location);
+        }
+        if (updateEventUserRequest.getPaid() != null) {
+            event.setPaid(updateEventUserRequest.getPaid());
+        }
+        if (updateEventUserRequest.getParticipantLimit() != null) {
+            event.setParticipantLimit(updateEventUserRequest.getParticipantLimit());
+        }
+        if (updateEventUserRequest.getRequestModeration() != null) {
+            event.setRequestModeration(updateEventUserRequest.getRequestModeration());
+        }
+        if (updateEventUserRequest.getTitle() != null) {
+            event.setTitle(updateEventUserRequest.getTitle());
+        }
+        if (updateEventUserRequest.getStateAction() != null) {
+            handleUserStateAction(event, updateEventUserRequest.getStateAction());
+        }
+    }
+
+    // Метод для обработки действий пользователя с состоянием события
+    private void handleUserStateAction(Event event, EventAction stateAction) {
+        if (stateAction.equals(EventAction.SEND_TO_REVIEW)) {
+            event.setState(EventState.PENDING);
+        } else if (stateAction.equals(EventAction.CANCEL_REVIEW)) {
+            event.setState(EventState.CANCELED);
+        }
+    }
+
+    // Метод для обработки действий администратора с состоянием события
+    private void handleStateAction(Event event, EventAction stateAction) {
+        if (stateAction.equals(EventAction.PUBLISH_EVENT) && !event.getState().equals(EventState.PENDING)) {
+            throw new ConflictException("Event in state " + event.getState() + " cannot be published");
+        }
+        if (stateAction.equals(EventAction.REJECT_EVENT) && event.getState().equals(EventState.PUBLISHED)) {
+            throw new ConflictException("Event in state " + event.getState() + " cannot be rejected");
+        }
+        if (stateAction.equals(EventAction.REJECT_EVENT)) {
+            event.setState(EventState.CANCELED);
+        }
+    }
+
+    // Универсальный компаратор для сортировки
+    private Comparator<EventShortDto> getComparator(Sort sort) {
+        if (sort == null) {
+            return Comparator.comparing(EventShortDto::getId); // Дефолтная сортировка по ID
+        }
+        return switch (sort) {
+            case EVENT_DATE -> Comparator.comparing(EventShortDto::getEventDate).reversed();
+            case VIEWS -> Comparator.comparing(EventShortDto::getViews).reversed();
+            case TOP_RATING -> Comparator.comparing(EventShortDto::getRating).reversed();
+            default -> Comparator.comparing(EventShortDto::getId);
+        };
     }
 }
