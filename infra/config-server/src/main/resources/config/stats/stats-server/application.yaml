@@ -8,12 +8,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
-    generate-ddl: false
     properties:
       hibernate:
         format_sql: true
-    show-sql: false
 
   sql:
     init:
@@ -21,11 +18,13 @@ spring:
 
 logging:
   level:
-    root: INFO
-    org.springframework.orm.jpa: INFO
-    org.springframework.transaction: INFO
-    org.springframework.transaction.interceptor: INFO
-    org.springframework.orm.jpa.JpaTransactionManager: INFO
+    org:
+      springframework:
+        orm:
+          jpa: INFO
+          JpaTransactionManager: INFO
+        transaction:
+          interceptor: INFO
 
 resilience4j.circuitbreaker:
   instances:

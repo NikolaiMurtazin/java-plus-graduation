@@ -1,0 +1,46 @@
+spring:
+  cloud:
+    gateway:
+      discovery.locator.enabled: true
+      routes:
+        - id: user_service_route
+          uri: lb://user-service
+          predicates:
+            - Path=/users ,/admin/users,/admin/users/{userId}
+
+        - id: event_service_route
+          uri: lb://event-service
+          predicates:
+            - Path=/events/**,/admin/events/**,/users/{userId}/events,/users/{userId}/events/{eventId}
+
+        - id: event_service_route_compilation
+          uri: lb://event-service
+          predicates:
+            - Path=/compilations/**,/admin/compilations/**
+
+        - id: event_service_route_categories
+          uri: lb://event-service
+          predicates:
+            - Path=/categories/**,/admin/categories/**
+
+        - id: request_service_route
+          uri: lb://request-service
+
+          predicates:
+            - Path=/users/{userId}/requests/**, /users/{userId}/events/{eventId}/requests
+
+        - id: rating_service_route
+          uri: lb://rating-service
+
+          predicates:
+            - Path=/users/{userId}/ratings/**
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org:
+      springframework:
+        cloud:
+          gateway: DEBUG

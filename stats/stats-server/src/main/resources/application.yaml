@@ -22,15 +22,3 @@ eureka:
 
 server:
   port: 9090
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health, info, env, beans
-  endpoint:
-    health:
-      show-details: always
-  info:
-    env:
-      enabled: true
