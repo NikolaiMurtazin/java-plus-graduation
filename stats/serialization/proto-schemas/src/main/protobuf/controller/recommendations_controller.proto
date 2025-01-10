@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package ru.practicum.ewm.stats.proto;
+
+// Импортируем описания сообщений и well-known type для Empty
+import "messages/recommendations_messages.proto";
+import "google/protobuf/empty.proto";
+
+// Сервис
+service RecommendationsController {
+  rpc GetRecommendationsForUser(UserPredictionsRequestProto)
+      returns (stream RecommendedEventProto);
+
+  rpc GetSimilarEvents(SimilarEventsRequestProto)
+      returns (stream RecommendedEventProto);
+
+  rpc GetInteractionsCount(InteractionsCountRequestProto)
+      returns (stream RecommendedEventProto);
+}

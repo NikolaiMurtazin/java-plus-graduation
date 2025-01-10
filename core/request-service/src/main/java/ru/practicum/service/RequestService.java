@@ -22,4 +22,6 @@ public interface RequestService {
     Integer getCountConfirmedRequest(long eventId);
 
     List<EventCountByRequest> getConfirmedRequest(List<Long> eventIds);
+
+    boolean userAttendedEvent(long userId, long eventId);
 }
