@@ -18,21 +18,28 @@ public class CollectorClient {
     private UserActionControllerGrpc.UserActionControllerBlockingStub collectorStub;
 
     public void sendUserAction(long userId, long eventId, ActionTypeProto actionType) {
-        long seconds = Instant.now().getEpochSecond();
-        int nanos = Instant.now().getNano();
+        try {
+            log.info("Отправка действия пользователя: userId={}, eventId={}, actionType={}", userId, eventId, actionType);
 
-        UserActionProto request = UserActionProto.newBuilder()
-                .setUserId(userId)
-                .setEventId(eventId)
-                .setActionType(actionType)
-                .setTimestamp(
-                        com.google.protobuf.Timestamp.newBuilder()
-                                .setSeconds(seconds)
-                                .setNanos(nanos)
-                )
-                .build();
+            long seconds = Instant.now().getEpochSecond();
+            int nanos = Instant.now().getNano();
 
-        Empty response = collectorStub.collectUserAction(request);
-        log.info("sendUserAction -> Collector ответил: {}", response);
+            UserActionProto request = UserActionProto.newBuilder()
+                    .setUserId(userId)
+                    .setEventId(eventId)
+                    .setActionType(actionType)
+                    .setTimestamp(
+                            com.google.protobuf.Timestamp.newBuilder()
+                                    .setSeconds(seconds)
+                                    .setNanos(nanos)
+                    )
+                    .build();
+
+            Empty response = collectorStub.collectUserAction(request);
+            log.info("sendUserAction -> Collector ответил: {}", response);
+        } catch (Exception e) {
+            log.error("Ошибка при отправке действия пользователя: userId={}, eventId={}, actionType={}",
+                    userId, eventId, actionType, e);
+        }
     }
 }
