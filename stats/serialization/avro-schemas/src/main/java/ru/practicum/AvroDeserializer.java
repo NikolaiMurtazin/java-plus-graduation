@@ -44,5 +44,6 @@ public class AvroDeserializer<T extends SpecificRecordBase> implements Deseriali
     }
 
     @Override
-    public void close() {}
+    public void close() {
+    }
 }

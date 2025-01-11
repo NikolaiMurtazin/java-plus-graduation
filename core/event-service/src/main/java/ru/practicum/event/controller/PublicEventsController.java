@@ -1,6 +1,5 @@
 package ru.practicum.event.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.ws.rs.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -43,10 +42,7 @@ public class PublicEventsController {
                                                @RequestParam(value = "onlyAvailable", defaultValue = "false") Boolean onlyAvailable,
                                                @RequestParam(value = "sort", required = false) Sort sort,
                                                @RequestParam(value = "from", defaultValue = "0") int from,
-                                               @RequestParam(value = "size", defaultValue = "10") int size,
-                                               HttpServletRequest request) {
-
-
+                                               @RequestParam(value = "size", defaultValue = "10") int size) {
         Map<String, LocalDateTime> ranges = validDate(rangeStart, rangeEnd);
         PublicEventRequestParams params = PublicEventRequestParams.builder()
                 .text(text)
@@ -79,9 +75,8 @@ public class PublicEventsController {
     }
 
     @GetMapping("/recommendations")
-    public List<EventRecommendationDto> getRecommendations(
-            @RequestHeader("X-EWM-USER-ID") long userId,
-            @RequestParam(name="maxResults", defaultValue="10") int maxResults) {
+    public List<EventRecommendationDto> getRecommendations(@RequestHeader("X-EWM-USER-ID") long userId,
+                                                           @RequestParam(name = "maxResults", defaultValue = "10") int maxResults) {
         var recStream = analyzerClient.getRecommendationsForUser(userId, maxResults);
         var recList = recStream.toList();
 
@@ -95,7 +90,6 @@ public class PublicEventsController {
     @PutMapping("/events/{eventId}/like")
     public void likeEvent(@PathVariable Long eventId,
                           @RequestHeader("X-EWM-USER-ID") long userId) {
-
         if (!requestClient.userAttendedEvent(userId, eventId)) {
             throw new BadRequestException("Пользователь не присутствовал на мероприятии " + eventId);
         }
