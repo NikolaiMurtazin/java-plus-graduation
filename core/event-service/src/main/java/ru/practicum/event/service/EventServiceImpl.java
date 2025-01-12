@@ -101,6 +101,7 @@ public class EventServiceImpl implements EventService {
         List<EventShortDto> eventShortDtos = new ArrayList<>(eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
+                    finalEvent.setConfirmedRequests(ev.getCount());
                     UserShortDto initiator = initiatorsByEventId.get(ev.getEventId());
                     double rating = getAnalyzerRating(ev.getEventId());
                     return eventMapper.toEventShortDto(finalEvent, rating, initiator);
@@ -171,6 +172,7 @@ public class EventServiceImpl implements EventService {
         return eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
+                    finalEvent.setConfirmedRequests(ev.getCount());
                     UserShortDto initiator = initiatorsByEventId.get(ev.getEventId());
                     double rating = getAnalyzerRating(ev.getEventId());
                     return eventMapper.toEventFullDto(finalEvent, rating, initiator);
@@ -200,9 +202,9 @@ public class EventServiceImpl implements EventService {
         return eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
+                    finalEvent.setConfirmedRequests(ev.getCount());
                     UserShortDto initiator = initiatorsByEventId.get(ev.getEventId());
                     double rating = getAnalyzerRating(ev.getEventId());
-
                     return eventMapper.toEventShortDto(finalEvent, rating, initiator);
                 })
                 .toList();
