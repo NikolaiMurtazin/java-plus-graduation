@@ -15,6 +15,8 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <avro-schemas.version>0.0.1-SNAPSHOT</avro-schemas.version>
+        <proto-schemas.version>0.0.1-SNAPSHOT</proto-schemas.version>
     </properties>
 
     <dependencies>
@@ -68,13 +70,13 @@
         <dependency>
             <groupId>ru.practicum</groupId>
             <artifactId>avro-schemas</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <version>${avro-schemas.version}</version>
         </dependency>
 
         <dependency>
             <groupId>ru.practicum</groupId>
             <artifactId>proto-schemas</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <version>${proto-schemas.version}</version>
         </dependency>
 
     </dependencies>
