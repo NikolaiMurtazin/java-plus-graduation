@@ -30,4 +30,10 @@ public class InternalRequestController implements RequestClient {
     public List<EventCountByRequest> getConfirmedRequest(@RequestBody List<Long> eventIds) {
         return requestService.getConfirmedRequest(eventIds);
     }
+
+    @Override
+    @GetMapping("{userId}/{eventId}")
+    public boolean userAttendedEvent(@PathVariable long userId, @PathVariable long eventId) {
+        return requestService.userAttendedEvent(userId, eventId);
+    }
 }

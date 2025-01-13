@@ -3,6 +3,7 @@ package ru.practicum.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import ru.practicum.model.Request;
+import ru.practicum.request.enums.RequestStatus;
 
 import java.util.List;
 
@@ -11,6 +12,8 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
     List<Request> findByEventIdAndRequesterId(long eventId, long userId);
 
     List<Request> findByRequesterId(long userId);
+
+    boolean existsByRequesterIdAndEventIdAndStatus(long userId, long eventId, RequestStatus status);
 
     @Query(value = "SELECT (COUNT(r.id)>=?2) " +
             "FROM Request r " +

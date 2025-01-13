@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.practicum.StatServiceAdapter;
+import ru.practicum.AnalyzerClient;
 import ru.practicum.event.dto.compilation.CompilationDto;
 import ru.practicum.event.dto.compilation.NewCompilationDto;
 import ru.practicum.event.dto.compilation.PublicCompilationParams;
@@ -18,16 +18,13 @@ import ru.practicum.event.dto.event.EventShortDto;
 import ru.practicum.event.mapper.EventMapper;
 import ru.practicum.event.model.Event;
 import ru.practicum.event.repository.EventRepository;
+import ru.practicum.ewm.stats.proto.RecommendationsMessages;
 import ru.practicum.exeption.NotFoundException;
-import ru.practicum.rating.feign.RatingClient;
 import ru.practicum.request.dto.EventCountByRequest;
-import ru.practicum.StatsParams;
-import ru.practicum.ViewStatsDTO;
 import ru.practicum.request.feign.RequestClient;
 import ru.practicum.user.dto.UserShortDto;
 import ru.practicum.user.feign.UserClient;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -41,10 +38,9 @@ import java.util.stream.StreamSupport;
 public class CompilationServiceImpl implements CompilationService {
     private final CompilationRepository compilationRepository;
     private final EventRepository eventRepository;
-    private final StatServiceAdapter statServiceAdapter;
     private final UserClient userClient;
     private final RequestClient requestClient;
-    private final RatingClient ratingClient;
+    private final AnalyzerClient analyzerClient;
     private final EventMapper eventMapper;
     private final CompilationMapper compilationMapper;
 
@@ -69,35 +65,17 @@ public class CompilationServiceImpl implements CompilationService {
 
         List<EventCountByRequest> eventsIdWithViews = requestClient.getConfirmedRequest(eventIds);
 
-        List<String> uris = eventsIdWithViews.stream()
-                .map(ev -> "/events/" + ev.getEventId())
-                .toList();
-
-        StatsParams statsParams = StatsParams.builder()
-                .uris(uris)
-                .unique(true)
-                .start(LocalDateTime.now().minusYears(100))
-                .end(LocalDateTime.now())
-                .build();
-
-        List<ViewStatsDTO> viewStatsDTOS = statServiceAdapter.getStats(statsParams);
         Map<Long, UserShortDto> initiatorsByEventId = getInitiators(compEvents);
         return eventsIdWithViews.stream().map(ev -> {
             Event finalEvent = compEvents.stream()
                     .filter(e -> e.getId().equals(ev.getEventId()))
                     .findFirst().orElseThrow(() -> new IllegalStateException("Event not found: " + ev.getEventId()));
 
-            int rating = getRating(finalEvent);
-
-            long views = viewStatsDTOS.stream()
-                    .filter(stat -> stat.getUri().equals("/events/" + ev.getEventId()))
-                    .map(ViewStatsDTO::getHits)
-                    .findFirst()
-                    .orElse(0L);
+            double rating = getAnalyzerRating(finalEvent.getId());
 
             finalEvent.setConfirmedRequests(ev.getCount());
             UserShortDto userShortDto = initiatorsByEventId.get(ev.getEventId());
-            return eventMapper.toEventShortDto(finalEvent, rating, views, userShortDto);
+            return eventMapper.toEventShortDto(finalEvent, rating, userShortDto);
         }).toList();
     }
 
@@ -158,8 +136,12 @@ public class CompilationServiceImpl implements CompilationService {
         return compilationMapper.toCompilationDto(compilation, getEventShortDtos(compilation));
     }
 
-    private int getRating(Event event) {
-        return ratingClient.getCountEventRating(event.getId());
+    private double getAnalyzerRating(long eventId) {
+        var stream = analyzerClient.getInteractionsCount(List.of(eventId));
+
+        return stream.findFirst()
+                .map(RecommendationsMessages.RecommendedEventProto::getScore)
+                .orElse(0.0);
     }
 
     private Map<Long, UserShortDto> getInitiators(List<Event> events) {

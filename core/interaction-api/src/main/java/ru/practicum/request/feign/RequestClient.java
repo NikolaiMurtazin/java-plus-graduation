@@ -16,4 +16,7 @@ public interface RequestClient {
 
     @GetMapping
     List<EventCountByRequest> getConfirmedRequest(@RequestParam("eventIds") List<Long> eventIds);
+
+    @GetMapping("{userId}/{eventId}")
+    boolean userAttendedEvent(@PathVariable long userId, @PathVariable long eventId);
 }

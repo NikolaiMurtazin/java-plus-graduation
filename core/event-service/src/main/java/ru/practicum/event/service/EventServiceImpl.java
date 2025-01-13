@@ -5,16 +5,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.practicum.StatServiceAdapter;
-import ru.practicum.StatsParams;
-import ru.practicum.ViewStatsDTO;
+import ru.practicum.AnalyzerClient;
 import ru.practicum.category.model.Category;
 import ru.practicum.category.repository.CategoryRepository;
 import ru.practicum.event.dto.event.AdminEventRequestParams;
 import ru.practicum.event.dto.event.EventRequestDto;
 import ru.practicum.event.enums.EventAction;
 import ru.practicum.event.dto.event.EventFullDto;
-import ru.practicum.event.dto.event.EventRatingDto;
 import ru.practicum.event.dto.event.EventShortDto;
 import ru.practicum.event.dto.event.NewEventDto;
 import ru.practicum.event.dto.event.PrivateEventParams;
@@ -26,12 +23,12 @@ import ru.practicum.event.model.Event;
 import ru.practicum.event.enums.EventState;
 import ru.practicum.event.model.QEvent;
 import ru.practicum.event.repository.EventRepository;
+import ru.practicum.ewm.stats.proto.RecommendationsMessages;
 import ru.practicum.exeption.ConflictException;
 import ru.practicum.exeption.NotFoundException;
 import ru.practicum.location.mapper.LocationMapper;
 import ru.practicum.location.model.Location;
 import ru.practicum.location.repository.LocationRepository;
-import ru.practicum.rating.feign.RatingClient;
 import ru.practicum.request.dto.EventCountByRequest;
 import ru.practicum.request.feign.RequestClient;
 import ru.practicum.user.dto.UserShortDto;
@@ -53,12 +50,11 @@ import static ru.practicum.event.enums.Sort.*;
 public class EventServiceImpl implements EventService {
 
     private final EventRepository eventRepository;
-    private final StatServiceAdapter statServiceAdapter;
+    private final AnalyzerClient analyzerClient;
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
     private final UserClient userClient;
     private final RequestClient requestClient;
-    private final RatingClient ratingClient;
     private final EventMapper eventMapper;
     private final LocationMapper locationMapper;
 
@@ -102,24 +98,19 @@ public class EventServiceImpl implements EventService {
 
         Map<Long, UserShortDto> initiatorsByEventId = getInitiators(events);
 
-        List<ViewStatsDTO> viewStatsDTOS = getViewStatsDTOS(eventsIdWithConfirmedRequest);
-        List<EventRatingDto> eventRatingDtos = getEventRatingDtos(events);
-
         List<EventShortDto> eventShortDtos = new ArrayList<>(eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
+                    finalEvent.setConfirmedRequests(ev.getCount());
                     UserShortDto initiator = initiatorsByEventId.get(ev.getEventId());
-                    long rating = getRating(ev, eventRatingDtos);
-                    long views = getViews(ev, viewStatsDTOS, finalEvent);
-                    return eventMapper.toEventShortDto(finalEvent, rating, views, initiator);
+                    double rating = getAnalyzerRating(ev.getEventId());
+                    return eventMapper.toEventShortDto(finalEvent, rating, initiator);
                 })
                 .toList());
 
         if (params.getSort() != null) {
             if (params.getSort() == EVENT_DATE) {
                 eventShortDtos.sort(Comparator.comparing(EventShortDto::getEventDate).reversed());
-            } else if (params.getSort() == VIEWS) {
-                eventShortDtos.sort(Comparator.comparing(EventShortDto::getViews).reversed());
             } else if (params.getSort() == TOP_RATING) {
                 eventShortDtos.sort(Comparator.comparing(EventShortDto::getRating).reversed());
             }
@@ -138,10 +129,9 @@ public class EventServiceImpl implements EventService {
         UserShortDto initiator = userClient.getUserById(event.getInitiatorId());
         Integer requests = requestClient.getCountConfirmedRequest(event.getId());
 
-        long rating = getEventRating(event.getId());
-        long eventViews = getEventViews(event);
+        double rating = getAnalyzerRating(eventId);
         event.setConfirmedRequests(requests);
-        return eventMapper.toEventFullDto(event, rating, eventViews, initiator);
+        return eventMapper.toEventFullDto(event, rating, initiator);
     }
 
     @Override
@@ -178,18 +168,14 @@ public class EventServiceImpl implements EventService {
 
         List<EventCountByRequest> eventsIdWithConfirmedRequest
                 = requestClient.getConfirmedRequest(eventIds);
-        List<EventRatingDto> eventRatingDtos = getEventRatingDtos(events);
-
-
-        List<ViewStatsDTO> viewStatsDTOS = getViewStatsDTOS(eventsIdWithConfirmedRequest);
 
         return eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
+                    finalEvent.setConfirmedRequests(ev.getCount());
                     UserShortDto initiator = initiatorsByEventId.get(ev.getEventId());
-                    long rating = getRating(ev, eventRatingDtos);
-                    long views = getViews(ev, viewStatsDTOS, finalEvent);
-                    return eventMapper.toEventFullDto(finalEvent, rating, views, initiator);
+                    double rating = getAnalyzerRating(ev.getEventId());
+                    return eventMapper.toEventFullDto(finalEvent, rating, initiator);
                 })
                 .toList();
     }
@@ -213,17 +199,13 @@ public class EventServiceImpl implements EventService {
         List<EventCountByRequest> eventsIdWithConfirmedRequest
                 = requestClient.getConfirmedRequest(eventIds);
 
-        List<ViewStatsDTO> viewStatsDTOS = getViewStatsDTOS(eventsIdWithConfirmedRequest);
-        List<EventRatingDto> eventRatingDtos = getEventRatingDtos(events);
-
         return eventsIdWithConfirmedRequest.stream()
                 .map(ev -> {
                     Event finalEvent = getFinalEvent(ev, events);
+                    finalEvent.setConfirmedRequests(ev.getCount());
                     UserShortDto initiator = initiatorsByEventId.get(ev.getEventId());
-                    long views = getViews(ev, viewStatsDTOS, finalEvent);
-                    long rating = getRating(ev, eventRatingDtos);
-
-                    return eventMapper.toEventShortDto(finalEvent, rating, views, initiator);
+                    double rating = getAnalyzerRating(ev.getEventId());
+                    return eventMapper.toEventShortDto(finalEvent, rating, initiator);
                 })
                 .toList();
     }
@@ -243,7 +225,7 @@ public class EventServiceImpl implements EventService {
                 LocalDateTime.now());
         event.setConfirmedRequests(0);
         Event saved = eventRepository.save(event);
-        return eventMapper.toEventFullDto(saved, 0, 0L, initiator);
+        return eventMapper.toEventFullDto(saved, 0, initiator);
     }
 
     @Override
@@ -253,9 +235,8 @@ public class EventServiceImpl implements EventService {
         if (!event.getInitiatorId().equals(userId)) {
             throw new ConflictException("The user is not the initiator of the event");
         }
-        long rating = getEventRating(event.getId());
-        long eventViews = getEventViews(event);
-        return eventMapper.toEventFullDto(event, rating, eventViews, initiator);
+        double rating = getAnalyzerRating(event.getId());
+        return eventMapper.toEventFullDto(event, rating, initiator);
     }
 
     @Override
@@ -310,9 +291,8 @@ public class EventServiceImpl implements EventService {
         }
         Event saved = eventRepository.save(event);
         UserShortDto initiator = getUser(event.getInitiatorId());
-        long rating = getEventRating(event.getId());
-        long eventViews = getEventViews(saved);
-        return eventMapper.toEventFullDto(saved, rating, eventViews, initiator);
+        double rating = getAnalyzerRating(saved.getId());
+        return eventMapper.toEventFullDto(saved, rating, initiator);
     }
 
     @Override
@@ -373,9 +353,8 @@ public class EventServiceImpl implements EventService {
 
         UserShortDto initiator = getUser(updated.getInitiatorId());
 
-        long rating = getEventRating(savedEvent.getId());
-        long eventViews = getEventViews(savedEvent);
-        return eventMapper.toEventFullDto(updated, rating, eventViews, initiator);
+        double rating = getAnalyzerRating(savedEvent.getId());
+        return eventMapper.toEventFullDto(updated, rating, initiator);
     }
 
     @Override
@@ -418,24 +397,6 @@ public class EventServiceImpl implements EventService {
                 .orElseThrow(() -> new NotFoundException("Category with id= " + categoryId + " was not found"));
     }
 
-    private long getRating(EventCountByRequest event, List<EventRatingDto> eventRatingDtos) {
-        return eventRatingDtos.stream()
-                .filter(ev -> ev.getEventId().equals(event.getEventId()))
-                .map(EventRatingDto::getRating)
-                .findFirst()
-                .orElse(0L);
-    }
-
-    private static long getViews(EventCountByRequest ev, List<ViewStatsDTO> viewStatsDTOS, Event finalEvent) {
-        long views = viewStatsDTOS.stream()
-                .filter(stat -> stat.getUri().equals("/events/" + ev.getEventId()))
-                .map(ViewStatsDTO::getHits)
-                .findFirst()
-                .orElse(0L);
-        finalEvent.setConfirmedRequests(Math.toIntExact(ev.getCount()));
-        return views;
-    }
-
     private static Event getFinalEvent(EventCountByRequest ev, List<Event> events) {
         return events.stream()
                 .filter(e -> e.getId().equals(ev.getEventId()))
@@ -443,42 +404,11 @@ public class EventServiceImpl implements EventService {
                 .orElseThrow(() -> new IllegalStateException("Event not found: " + ev.getEventId()));
     }
 
-    private int getEventRating(long eventId) {
-        return ratingClient.getCountEventRating(eventId);
-    }
+    private double getAnalyzerRating(long eventId) {
+        var stream = analyzerClient.getInteractionsCount(List.of(eventId));
 
-    private List<EventRatingDto> getEventRatingDtos(List<Event> events) {
-        List<Long> eventIds = events.stream().map(Event::getId).toList();
-        return ratingClient.getEventsRating(eventIds);
-    }
-
-    private long getEventViews(Event event) {
-        List<String> listEndpoint = List.of("/events/" + event.getId());
-        StatsParams statsParams = StatsParams.builder()
-                .uris(listEndpoint)
-                .unique(true)
-                .start(LocalDateTime.now().minusYears(200))
-                .end(LocalDateTime.now())
-                .build();
-        List<ViewStatsDTO> stats = statServiceAdapter.getStats(statsParams);
-        if (stats.isEmpty()) {
-            return 0;
-        }
-        return stats.getFirst().getHits();
-    }
-
-    private List<ViewStatsDTO> getViewStatsDTOS(List<EventCountByRequest> eventsIdWithConfirmedRequest) {
-        List<String> uris = eventsIdWithConfirmedRequest.stream()
-                .map(ev -> "/events/" + ev.getEventId())
-                .toList();
-
-        StatsParams statsParams = StatsParams.builder()
-                .uris(uris)
-                .unique(true)
-                .start(LocalDateTime.now().minusYears(100))
-                .end(LocalDateTime.now())
-                .build();
-
-        return statServiceAdapter.getStats(statsParams);
+        return stream.findFirst()
+                .map(RecommendationsMessages.RecommendedEventProto::getScore)
+                .orElse(0.0);
     }
 }

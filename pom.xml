@@ -15,7 +15,7 @@
         <module>infra</module>
 		<module>core</module>
 		<module>stats</module>
-    </modules>
+	</modules>
 
     <groupId>ru.practicum</groupId>
 	<artifactId>explore-with-me</artifactId>
@@ -27,26 +27,39 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<springdoc-openapi-starter.version>2.6.0</springdoc-openapi-starter.version>
 		<spring-cloud-dependencies.version>2023.0.3</spring-cloud-dependencies.version>
+		<avro.version>1.12.0</avro.version>
+		<kafka-clients.version>3.6.1</kafka-clients.version>
+		<grpc-spring-boot-starter.version>3.1.0.RELEASE</grpc-spring-boot-starter.version>
+		<protobuf.version>3.25.1</protobuf.version>
+		<grpc.version>1.63.0</grpc.version>
+
+
+		<!--       Plugins       -->
+		<maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
+		<avro-maven-plugin.version>${avro.version}</avro-maven-plugin.version>
+		<protobuf-plugin.version>2.4.0</protobuf-plugin.version>
 	</properties>
 
 	<dependencyManagement>
 		<dependencies>
+			<dependency>
+				<groupId>org.apache.avro</groupId>
+				<artifactId>avro</artifactId>
+				<version>${avro.version}</version>
+			</dependency>
 
-			<!--
-                Springdoc OpenAPI — библиотека для автоматической генерации документации API на основе OpenAPI 3.
-                Стартер `springdoc-openapi-starter-webmvc-ui` работает с Spring MVC-приложениями и предоставляет
-                удобный Swagger UI для просмотра и тестирования API.
-            -->
+			<dependency>
+				<groupId>org.apache.kafka</groupId>
+				<artifactId>kafka-clients</artifactId>
+				<version>${kafka-clients.version}</version>
+			</dependency>
+
 			<dependency>
 				<groupId>org.springdoc</groupId>
 				<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 				<version>${springdoc-openapi-starter.version}</version>
 			</dependency>
 
-			<!--
-                Spring Cloud BOM (Bill of Materials) — централизованное управление версиями зависимостей Spring Cloud.
-                Позволяет упростить работу с версиями и избежать конфликтов в библиотечных зависимостях.
-            -->
 			<dependency>
 				<groupId>org.springframework.cloud</groupId>
 				<artifactId>spring-cloud-dependencies</artifactId>
@@ -55,12 +68,51 @@
 				<scope>import</scope>
 			</dependency>
 
+			<!--    GRPC dependencies management        -->
+			<dependency>
+				<groupId>net.devh</groupId>
+				<artifactId>grpc-spring-boot-starter</artifactId>
+				<version>${grpc-spring-boot-starter.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>net.devh</groupId>
+				<artifactId>grpc-server-spring-boot-starter</artifactId>
+				<version>${grpc-spring-boot-starter.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-stub</artifactId>
+				<version>${grpc.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-protobuf</artifactId>
+				<version>${grpc.version}</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
 	<build>
 		<pluginManagement>
 			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>${maven-compiler-plugin.version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.avro</groupId>
+					<artifactId>avro-maven-plugin</artifactId>
+					<version>${avro-maven-plugin.version}</version>
+				</plugin>
+				<plugin>
+					<groupId>io.github.ascopes</groupId>
+					<artifactId>protobuf-maven-plugin</artifactId>
+					<version>${protobuf-plugin.version}</version>
+				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-surefire-plugin</artifactId>

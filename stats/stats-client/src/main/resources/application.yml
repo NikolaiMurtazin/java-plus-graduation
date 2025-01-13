@@ -1,0 +1,13 @@
+grpc:
+  client:
+    collector:                      # <-- имя, используемое в @GrpcClient("collector")
+      address: 'discovery:///collector'
+      enableKeepAlive: true
+      keepAliveWithoutCalls: true
+      negotiationType: plaintext
+
+    analyzer:                       # <-- имя, используемое в @GrpcClient("analyzer")
+      address: 'discovery:///analyzer'
+      enableKeepAlive: true
+      keepAliveWithoutCalls: true
+      negotiationType: plaintext
